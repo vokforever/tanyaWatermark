@@ -1,0 +1,4 @@
+python-dotenv==1.0.0
+python-telegram-bot==21.10
+Pillow==9.5.0
+moviepy==2.2.1
