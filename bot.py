@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import asyncio
+import random
 import subprocess
 import concurrent.futures
 
@@ -17,7 +18,7 @@ try:
     print("PIL импортирован")
 
     # --- Библиотеки для работы с видео ---
-    from moviepy.editor import VideoFileClip, TextClip, ImageClip, CompositeVideoClip, AudioClip
+    from moviepy.editor import VideoFileClip, TextClip, ImageClip, CompositeVideoClip, AudioClip, AudioFileClip
     print("moviepy импортирован")
 
     # --- НАСТРОЙКА ImageMagick (ОБЯЗАТЕЛЬНО ДЛЯ ВИДЕО) ---
@@ -53,8 +54,10 @@ user_states = {}
 # Путь к файлам
 LOGO_FILE = os.path.join(script_dir, "telegram-logo.png")
 FONT_FILE = os.path.join(script_dir, "Roboto-Regular.ttf")
+MUSIC_FOLDER = os.path.join(script_dir, "back_music")
 print(f"Путь к логотипу: {LOGO_FILE}")
 print(f"Путь к шрифту: {FONT_FILE}")
+print(f"Папка с музыкой: {MUSIC_FOLDER}")
 
 # Включаем логирование, чтобы видеть ошибки
 print("Настраиваю логирование...")
@@ -197,9 +200,9 @@ def add_watermark(image_path: str, scale_factor: float) -> str:
                 os.remove(f_path)
         logger.info("Временные файлы очищены.")
 
-def add_watermark_to_video(video_path: str) -> tuple:
+def add_watermark_to_video(video_path: str, user_id: str) -> tuple:
     """Добавляет водяной знак на видео и возвращает путь и метаданные."""
-    output_path = os.path.join(script_dir, "watermarked_video.mp4")
+    output_path = os.path.join(script_dir, f"watermarked_video_{user_id}.mp4")
     try:
         logger.info(f"Начало обработки видео: {video_path}")
         video = VideoFileClip(video_path)
@@ -255,6 +258,51 @@ def add_watermark_to_video(video_path: str) -> tuple:
     except Exception as e:
         logger.error(f"Ошибка при обработке видео: {e}", exc_info=True)
         return None, None, None, None
+
+def get_random_music_track():
+    """Находит случайный музыкальный трек в папке back_music."""
+    logger.info(f"Ищу музыку в папке: {MUSIC_FOLDER}")
+    if not os.path.exists(MUSIC_FOLDER):
+        logger.warning("Папка back_music не найдена.")
+        return None
+    
+    music_files = [f for f in os.listdir(MUSIC_FOLDER) if f.lower().endswith(('.mp3', '.wav', '.m4a'))]
+    if not music_files:
+        logger.warning("В папке back_music нет подходящих аудиофайлов.")
+        return None
+        
+    random_track_name = random.choice(music_files)
+    logger.info(f"Выбран случайный трек: {random_track_name}")
+    return os.path.join(MUSIC_FOLDER, random_track_name)
+
+def add_music_to_video(video_path: str, music_path: str, user_id: str):
+    """Накладывает музыку на видео, обрезая музыку по длительности видео."""
+    output_path = os.path.join(script_dir, f"final_with_music_{user_id}.mp4")
+    logger.info(f"Накладываю музыку '{music_path}' на видео '{video_path}'")
+    
+    video_clip = None
+    music_clip = None
+    try:
+        video_clip = VideoFileClip(video_path)
+        music_clip = AudioFileClip(music_path)
+
+        # Если музыка длиннее видео, обрезаем её
+        if music_clip.duration > video_clip.duration:
+            music_clip = music_clip.subclip(0, video_clip.duration)
+        
+        # Накладываем аудио
+        final_clip = video_clip.set_audio(music_clip)
+        
+        logger.info(f"Сохраняю финальное видео с музыкой в: {output_path}")
+        final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac', preset='medium', threads=4)
+        
+        return output_path
+    except Exception as e:
+        logger.error(f"Ошибка при наложении музыки: {e}", exc_info=True)
+        return None
+    finally:
+        if video_clip: video_clip.close()
+        if music_clip: music_clip.close()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет приветственное сообщение."""
@@ -393,48 +441,46 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         context.application.create_task(process_video_task(update, context, processing_message, input_path))
 
 async def process_video_task(update: Update, context: ContextTypes.DEFAULT_TYPE, processing_message, input_path: str) -> None:
-    """Фоновая задача для обработки видео. Отправляет превью с кнопкой "Скачать"."""
+    """Фоновая задача для обработки видео. Отправляет превью с двумя кнопками."""
     user_id = str(update.effective_user.id)
     logger.info(f"Начинаю фоновую обработку видео для пользователя {user_id}")
     output_path = None
     try:
         await processing_message.edit_text("Добавляю водяной знак на видео...")
-        output_path, width, height, duration = add_watermark_to_video(input_path)
+        # Передаем user_id, чтобы создать уникальное имя файла
+        output_path, width, height, duration = add_watermark_to_video(input_path, user_id)
 
         if output_path:
             logger.info(f"Видео успешно обработано: {output_path}")
             await processing_message.edit_text("Отправляю видео-превью...")
             
-            # Создаем клавиатуру с кнопкой "Скачать файлом"
-            keyboard = [[InlineKeyboardButton("✅ Скачать файлом", callback_data='download_video')]]
+            # ИЗМЕНЕНО: Новая клавиатура с двумя кнопками
+            keyboard = [
+                [InlineKeyboardButton("✅ Скачать (без музыки)", callback_data='download_video_silent')],
+                [InlineKeyboardButton("🎵 Скачать с музыкой", callback_data='download_video_music')]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             with open(output_path, 'rb') as video_file:
                 await update.message.reply_video(
-                    video=video_file,
-                    filename="watermarked_video.mp4",
-                    width=width, height=height, duration=int(duration),
-                    supports_streaming=True,
-                    reply_markup=reply_markup # Прикрепляем кнопку
+                    video=video_file, width=width, height=height, duration=int(duration),
+                    supports_streaming=True, reply_markup=reply_markup
                 )
             
-            # Сохраняем путь к готовому файлу, чтобы его можно было скачать по кнопке
             user_states[user_id] = {'output_path': output_path, 'media_type': 'video'}
             save_states()
             logger.info(f"Видео-превью отправлено, путь сохранен для пользователя {user_id}")
             
         else:
             await processing_message.edit_text("Не удалось обработать видео.")
-
     except Exception as e:
         logger.error(f"Критическая ошибка в process_video_task: {e}", exc_info=True)
         await processing_message.edit_text("Произошла ошибка при обработке видео.")
     finally:
-        # ВАЖНО: Удаляем только ИСХОДНЫЙ файл. Обработанный (output) оставляем для скачивания.
         if input_path and os.path.exists(input_path):
             os.remove(input_path)
         await processing_message.delete()
-        logger.info(f"Обработка видео завершена. Исходный файл удален.")
+        logger.info("Обработка видео завершена. Исходный файл удален.")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает нажатия кнопок (только для фото)."""
@@ -539,7 +585,7 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if output_path and os.path.exists(output_path):
             os.remove(output_path)
 
-async def handle_video_download(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_video_download_silent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет файл видео для скачивания."""
     query = update.callback_query
     await query.answer("Готовлю файл...")
@@ -565,6 +611,50 @@ async def handle_video_download(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         logger.error(f"Ошибка при отправке видео-файла: {e}", exc_info=True)
         await query.message.reply_text("Произошла ошибка при отправке файла.")
+
+async def handle_download_with_music(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Накладывает музыку и отправляет финальное видео файлом."""
+    query = update.callback_query
+    await query.answer("Ищу музыку...")
+    user_id = str(query.from_user.id)
+    logger.info(f"Запрос на скачивание видео с музыкой от {user_id}")
+
+    if user_id not in user_states or 'output_path' not in user_states[user_id]:
+        await query.message.reply_text("Сессия устарела. Отправьте видео заново.")
+        return
+
+    watermarked_video_path = user_states[user_id]['output_path']
+    if not os.path.exists(watermarked_video_path):
+        await query.message.reply_text("Файл утерян. Отправьте видео заново.")
+        return
+
+    music_track = get_random_music_track()
+    if not music_track:
+        await query.message.reply_text("Не могу найти музыку в папке `back_music` на сервере.")
+        return
+
+    await query.edit_message_reply_markup(None) # Убираем кнопки, чтобы избежать повторных нажатий
+    await query.message.reply_text("Начинаю наложение музыки. Это может занять некоторое время...")
+
+    final_video_path = None
+    try:
+        loop = asyncio.get_event_loop()
+        final_video_path = await loop.run_in_executor(
+            None, add_music_to_video, watermarked_video_path, music_track, user_id
+        )
+
+        if final_video_path:
+            logger.info(f"Отправляю финальное видео {final_video_path}")
+            with open(final_video_path, 'rb') as video_doc:
+                await query.message.reply_document(document=video_doc, filename="final_video_with_music.mp4")
+        else:
+            await query.message.reply_text("Не удалось добавить музыку к видео.")
+            
+    except Exception as e:
+        logger.error(f"Ошибка в handle_download_with_music: {e}", exc_info=True)
+    finally:
+        if final_video_path and os.path.exists(final_video_path):
+            os.remove(final_video_path) # Удаляем финальный файл сразу после отправки
 
 def main() -> None:
     """Запускает бота."""
@@ -605,7 +695,10 @@ def main() -> None:
         # Обработчики кнопок
         application.add_handler(CallbackQueryHandler(handle_callback, pattern='^(increase|decrease)$'))
         application.add_handler(CallbackQueryHandler(handle_download, pattern='^download$'))
-        application.add_handler(CallbackQueryHandler(handle_video_download, pattern='^download_video$'))
+        
+        # ИЗМЕНЕНО: Обновляем обработчики для видео
+        application.add_handler(CallbackQueryHandler(handle_video_download_silent, pattern='^download_video_silent$'))
+        application.add_handler(CallbackQueryHandler(handle_download_with_music, pattern='^download_video_music$'))
         logger.info("Обработчики добавлены")
 
         print("Бот запущен...")

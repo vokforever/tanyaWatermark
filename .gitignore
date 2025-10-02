@@ -43,6 +43,19 @@ temp_*.png
 temp_*.mp4
 watermarked_image.png
 watermarked_video.mp4
+
+# Media files
+*.mp3
+*.wav
+*.m4a
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
 .clinerules/byterover-rules.md
 .kilocode/rules/byterover-rules.md
 .roo/rules/byterover-rules.md
