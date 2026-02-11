@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+LICENSE
+
+# Environment files
+.env
+.env.local
+
+# Temporary files
+temp_*.png
+temp_*.mp4
+temp_logo_resized.png
+temp_text.png
+temp_watermark_combined.png
+watermarked_image.png
+watermarked_video_*.mp4
+final_with_music_*.mp4
+
+# Database and state files (будут смонтированы как volumes)
+bot_queue.db
+user_states.json
+
+# Windows specific
+start.bat
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log

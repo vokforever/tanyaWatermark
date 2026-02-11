@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tanya-watermark-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      # Монтируем папку с музыкой для возможности добавления новых треков
+      - ./back_music:/app/back_music
+      # Монтируем файлы состояний для сохранения между перезапусками
+      - ./user_states.json:/app/user_states.json
+      # Монтируем базу данных очереди
+      - ./bot_queue.db:/app/bot_queue.db
+    # Опционально: можно задать лимиты ресурсов
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 1G
