@@ -22,11 +22,28 @@ try:
     print("moviepy импортирован")
 
     # --- НАСТРОЙКА ImageMagick (ОБЯЗАТЕЛЬНО ДЛЯ ВИДЕО) ---
-    # Указываем прямой путь к magick.exe для корректной работы с видео
+    # Указываем путь к ImageMagick для корректной работы с видео
     print("Настраиваю ImageMagick...")
     from moviepy.config import change_settings
-    change_settings({"IMAGEMAGICK_BINARY": r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"})
-    print("ImageMagick настроен")
+    
+    # Определяем путь к ImageMagick в зависимости от ОС
+    import platform
+    system = platform.system()
+    
+    if system == "Windows":
+        # Windows: используем полный путь к magick.exe
+        imagick_path = r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"
+        # Проверяем, существует ли файл, если нет - пробуем другие пути
+        if not os.path.exists(imagick_path):
+            imagick_path = r"C:\Program Files\ImageMagick-7.1.1-Q16-HDRI\magick.exe"
+        if not os.path.exists(imagick_path):
+            imagick_path = "magick"  # Попытка использовать системный PATH
+    else:
+        # Linux/Mac: используем системный PATH
+        imagick_path = "magick"
+    
+    change_settings({"IMAGEMAGICK_BINARY": imagick_path})
+    print(f"ImageMagick настроен: {imagick_path}")
 except ImportError as e:
     print(f"Ошибка импорта: {e}")
     print("Убедитесь, что все необходимые библиотеки установлены:")
